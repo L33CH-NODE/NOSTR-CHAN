@@ -25,8 +25,29 @@
 </head>
 <body>
   <h1>Welcome to NOSTRchan</h1>
+  <div style="margin-bottom:10px;">
+    <button class="back-button" onclick="toggleSettings()">Settings</button>
+  </div>
   <div id="loading" style="display:none;">Loading...</div>
   <div id="message-box"></div>
+
+  <div id="settings-panel" style="display:none; background:#F0E0D6; padding:10px; border:1px solid #D6D6D6; margin-bottom:10px;">
+    <h2>Configuration</h2>
+    <div style="margin-bottom:6px;">
+      <label for="relay-list"><strong>Relays (one per line)</strong></label>
+      <textarea id="relay-list" style="width:100%; height:120px; background:#FFFFEE;"></textarea>
+    </div>
+    <div style="margin-top:8px;">
+      <label for="publish-count"><strong>Publish subset size</strong></label>
+      <input type="number" id="publish-count" min="1" max="10" value="3" style="width:60px;">
+    </div>
+    <div style="margin-top:8px;">
+      <button class="back-button" onclick="saveSettings()">Save</button>
+      <button class="back-button" onclick="testRelays()">Test Relays</button>
+      <button class="back-button" onclick="toggleSettings()">Close</button>
+    </div>
+    <div id="relay-status" style="margin-top:8px;"></div>
+  </div>
 
   <div class="board-list">
     <h2>Boards</h2>
@@ -63,12 +84,64 @@
       setTimeout(() => msgBox.style.display = 'none', duration);
     }
 
-    const RELAYS = [
+    // Default, privacy-optimized relay set
+    const DEFAULT_RELAYS = [
       'wss://relay.damus.io',
-      'wss://nostr-pub.wellorder.net',
       'wss://nos.lol',
-      'wss://nostr.wine'
+      'wss://eden.nostr.land',
+      'wss://relay.snort.social',
+      'wss://relay.primal.net',
+      'wss://nostr.fmt.wiz.biz',
+      'wss://offchain.pub',
+      'wss://nostr.wine',
+      'wss://relay.current.fyi',
+      'wss://purplepag.es',
+      'wss://nostr.mom',
+      'wss://relay.orangepill.dev',
+      'wss://relay.nostr.bg',
+      'wss://nostr.zebedee.cloud',
+      'wss://nostr.zaprite.com',
+      'wss://nostr-pub.wellorder.net'
     ];
+
+    // Working relay list (starts from defaults, can be overridden by user)
+    let RELAYS = DEFAULT_RELAYS.slice();
+    let publishSubsetCount = Number(localStorage.getItem('publishSubsetCount')) || 3;
+
+    function normalizeRelayUrl(url) {
+      try { return new URL(url).toString().replace(/\/$/, ''); } catch { return ''; }
+    }
+
+    function loadRelaysFromStorage() {
+      try {
+        const raw = localStorage.getItem('relays');
+        if (!raw) return;
+        const list = raw.split(/[\n,\s]+/).map(normalizeRelayUrl).filter(Boolean);
+        const unique = Array.from(new Set(list));
+        if (unique.length) {
+          RELAYS = unique;
+        }
+      } catch {}
+    }
+
+    function getPublishCount() {
+      const n = Number(localStorage.getItem('publishSubsetCount'));
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : publishSubsetCount;
+    }
+
+    function pickRandomSubset(array, count) {
+      if (array.length <= count) return array.slice();
+      const copy = array.slice();
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = copy[i]; copy[i] = copy[j]; copy[j] = t;
+      }
+      return copy.slice(0, count);
+    }
+
+    function getWriteRelays() {
+      return pickRandomSubset(RELAYS, getPublishCount());
+    }
 
     let pool = null;
     let currentSub = null;
@@ -216,7 +289,7 @@
         const {privkey}=await generateTempKeypair();
         const ev={kind:1,pubkey:NostrTools.getPublicKey(privkey),created_at:Math.floor(Date.now()/1000),tags,content};
         const signed=NostrTools.finalizeEvent(ev,privkey);
-        const pubs=pool.publish(RELAYS,signed);
+        const pubs=pool.publish(getWriteRelays(),signed);
         const results=await Promise.allSettled(pubs);
         if(results.some(r=>r.status==='fulfilled')) showMessage('Thread posted!'); else throw new Error('No relays accepted');
         document.getElementById('new-thread-content').value='';
@@ -231,13 +304,14 @@
       if(!content&&!imageFile){showMessage('Reply content or image required');return;}
       btn.disabled=true;
       try{
-        const tags=[['e',currentThread.id,RELAYS[0],'reply']];
+        // Remove relay URL from 'e' tag for privacy; keep marker as 'reply'
+        const tags=[['e',currentThread.id,'','reply']];
         if(imageFile){ btn.innerText='Uploading...'; const url=await uploadImage(imageFile); if(url) tags.push(['image',url]); }
         btn.innerText='Posting...';
         const {privkey}=await generateTempKeypair();
         const ev={kind:1,pubkey:NostrTools.getPublicKey(privkey),created_at:Math.floor(Date.now()/1000),tags,content};
         const signed=NostrTools.finalizeEvent(ev,privkey);
-        const pubs=pool.publish(RELAYS,signed);
+        const pubs=pool.publish(getWriteRelays(),signed);
         const results=await Promise.allSettled(pubs);
         if(results.some(r=>r.status==='fulfilled')) showMessage('Reply posted!'); else throw new Error('No relays accepted');
         document.getElementById('new-post-content').value='';
@@ -245,7 +319,72 @@
       }catch(e){console.error(e);showMessage('Failed: '+e.message);}finally{btn.disabled=false;btn.innerText='Post Reply';}
     }
 
-    window.onload=async()=>{ try{await ensureRelayConnections(); loadBoards();}catch(e){console.error(e);showMessage('Failed to connect to relays');} };
+    function toggleSettings() {
+      const panel = document.getElementById('settings-panel');
+      const isOpen = panel.style.display !== 'none';
+      panel.style.display = isOpen ? 'none' : 'block';
+      if (!isOpen) populateSettingsForm();
+    }
+
+    function populateSettingsForm() {
+      const textarea = document.getElementById('relay-list');
+      textarea.value = RELAYS.join('\n');
+      document.getElementById('publish-count').value = getPublishCount();
+      document.getElementById('relay-status').innerHTML = '';
+    }
+
+    async function saveSettings() {
+      const textarea = document.getElementById('relay-list');
+      const countEl = document.getElementById('publish-count');
+      const raw = textarea.value || '';
+      const list = raw.split(/[\n,\s]+/).map(normalizeRelayUrl).filter(Boolean);
+      const unique = Array.from(new Set(list));
+      localStorage.setItem('relays', unique.join('\n'));
+      const n = Math.max(1, Math.min(10, Number(countEl.value) || 3));
+      localStorage.setItem('publishSubsetCount', String(n));
+      publishSubsetCount = n;
+      if (unique.length) {
+        RELAYS = unique;
+      }
+      try {
+        await ensureRelayConnections();
+        showMessage('Settings saved');
+      } catch (e) {
+        console.error(e);
+        showMessage('Saved, but failed to connect to some relays');
+      }
+    }
+
+    async function testRelays() {
+      const statusDiv = document.getElementById('relay-status');
+      statusDiv.innerHTML = 'Testing...';
+      const results = [];
+      const timeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
+      await Promise.allSettled(RELAYS.map(async (url) => {
+        let relay;
+        try {
+          relay = NostrTools.relayInit(url);
+          await Promise.race([relay.connect(), timeout(4000)]);
+          results.push({ url, ok: true });
+        } catch (e) {
+          results.push({ url, ok: false });
+        } finally {
+          try { relay?.close(); } catch {}
+        }
+      }));
+      statusDiv.innerHTML = results.map(r => `${r.ok ? '✅' : '❌'} ${r.url}`).join('<br>');
+    }
+
+    window.onload=async()=>{
+      try{
+        loadRelaysFromStorage();
+        await ensureRelayConnections();
+        loadBoards();
+      }catch(e){
+        console.error(e);
+        showMessage('Failed to connect to relays');
+      }
+    };
   </script>
 </body>
 </html>
