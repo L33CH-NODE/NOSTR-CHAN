@@ -3,388 +3,537 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NOSTRchan - Nostr-based Anonymous Forum</title>
+  <title>NOSTRchan - Anonymous Nostr Feed</title>
   <script src="https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js"></script>
   <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; background: #FFFFEE; padding: 20px; color: #000; }
-    .board, .thread, .post { background: #F0E0D6; padding: 10px; margin: 5px 0; border: 1px solid #D6D6D6; }
-    h1, h2, h3 { color: #800000; }
-    a { color: #0000EE; text-decoration: none; }
-    a:hover { color: #DD0000; }
-    .post-form textarea { width: 100%; height: 100px; background: #F0E0D6; border: 1px solid #D6D6D6; }
-    .post-form button { padding: 10px; background: #F0E0D6; color: #800000; border: 1px solid #D6D6D6; cursor: pointer; }
-    .post-form button:hover { background: #E0D0C6; }
-    .post-form button:disabled { cursor: not-allowed; background: #E0D0C6; color: #A0A0A0; }
-    .board-category ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; }
-    .board-category li { margin-right: 10px; cursor: pointer; }
-    #loading { color: #800000; font-weight: bold; }
-    .back-button { padding: 8px; background: #F0E0D6; color: #800000; border: 1px solid #D6D6D6; cursor: pointer; margin-bottom: 10px; }
-    #message-box { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #DD0000; color: white; padding: 15px 30px; border-radius: 8px; display: none; font-weight: bold; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    header {
+      text-align: center;
+      padding: 24px 0 16px;
+      border-bottom: 1px solid #333;
+      margin-bottom: 16px;
+    }
+    header h1 {
+      color: #7b68ee;
+      font-size: 1.8em;
+      letter-spacing: 2px;
+    }
+    header p {
+      color: #888;
+      font-size: 0.85em;
+      margin-top: 4px;
+    }
+
+    /* Post form */
+    .post-form {
+      background: #16213e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .post-form textarea {
+      width: 100%;
+      background: #1a1a2e;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 12px;
+      font-size: 0.95em;
+      resize: vertical;
+      min-height: 80px;
+      font-family: inherit;
+    }
+    .post-form textarea:focus {
+      outline: none;
+      border-color: #7b68ee;
+    }
+    .post-form textarea::placeholder { color: #666; }
+    .form-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .char-count { color: #666; font-size: 0.8em; }
+    .post-btn {
+      background: #7b68ee;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 24px;
+      font-size: 0.95em;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .post-btn:hover { background: #6a5acd; }
+    .post-btn:disabled { background: #444; color: #888; cursor: not-allowed; }
+
+    /* Feed */
+    .feed { display: flex; flex-direction: column; gap: 8px; }
+    .msg {
+      background: #16213e;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 14px 16px;
+      word-wrap: break-word;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    .msg-text {
+      font-size: 0.95em;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .msg-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      font-size: 0.75em;
+      color: #666;
+    }
+    .msg-anon { color: #7b68ee; font-weight: 600; }
+    .msg-img {
+      max-width: 100%;
+      max-height: 400px;
+      border-radius: 6px;
+      margin-top: 8px;
+      cursor: pointer;
+    }
+
+    /* Status bar */
+    .status-bar {
+      text-align: center;
+      padding: 8px;
+      font-size: 0.8em;
+      color: #666;
+    }
+    .status-bar .connected { color: #4caf50; }
+    .status-bar .error { color: #f44336; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      z-index: 100;
+      display: none;
+      font-size: 0.9em;
+    }
+    .toast.success { background: #4caf50; color: #fff; }
+    .toast.error { background: #f44336; color: #fff; }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+    }
+    .loading::after {
+      content: '';
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #666;
+      border-top-color: #7b68ee;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Image upload */
+    .img-upload-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .img-upload-label {
+      background: #1a1a2e;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.85em;
+      cursor: pointer;
+      color: #aaa;
+      transition: border-color 0.2s;
+    }
+    .img-upload-label:hover { border-color: #7b68ee; color: #e0e0e0; }
+    .img-upload-name { font-size: 0.8em; color: #888; }
+
+    /* Settings toggle */
+    .settings-toggle {
+      background: none;
+      border: 1px solid #333;
+      color: #888;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.8em;
+      cursor: pointer;
+      float: right;
+    }
+    .settings-toggle:hover { color: #e0e0e0; border-color: #7b68ee; }
+    .settings-panel {
+      background: #16213e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .settings-panel h3 { color: #7b68ee; margin-bottom: 10px; font-size: 0.95em; }
+    .settings-panel textarea {
+      width: 100%;
+      background: #1a1a2e;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 8px;
+      font-size: 0.85em;
+      min-height: 100px;
+      font-family: monospace;
+    }
+    .settings-panel label { display: block; color: #aaa; font-size: 0.85em; margin-bottom: 4px; }
+    .settings-panel button {
+      background: #7b68ee;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 0.85em;
+      cursor: pointer;
+      margin-top: 8px;
+      margin-right: 6px;
+    }
   </style>
 </head>
 <body>
-  <h1>Welcome to NOSTRchan</h1>
-  <div style="margin-bottom:10px;">
-    <button class="back-button" onclick="toggleSettings()">Settings</button>
-  </div>
-  <div id="loading" style="display:none;">Loading...</div>
-  <div id="message-box"></div>
+  <div class="container">
+    <header>
+      <h1>NOSTRchan</h1>
+      <p>anonymous nostr message feed</p>
+    </header>
 
-  <div id="settings-panel" style="display:none; background:#F0E0D6; padding:10px; border:1px solid #D6D6D6; margin-bottom:10px;">
-    <h2>Configuration</h2>
-    <div style="margin-bottom:6px;">
-      <label for="relay-list"><strong>Relays (one per line)</strong></label>
-      <textarea id="relay-list" style="width:100%; height:120px; background:#FFFFEE;"></textarea>
-    </div>
-    <div style="margin-top:8px;">
-      <label for="publish-count"><strong>Publish subset size</strong></label>
-      <input type="number" id="publish-count" min="1" max="10" value="3" style="width:60px;">
-    </div>
-    <div style="margin-top:8px;">
-      <button class="back-button" onclick="saveSettings()">Save</button>
-      <button class="back-button" onclick="testRelays()">Test Relays</button>
-      <button class="back-button" onclick="toggleSettings()">Close</button>
-    </div>
-    <div id="relay-status" style="margin-top:8px;"></div>
-  </div>
+    <button class="settings-toggle" onclick="toggleSettings()">relays</button>
+    <div style="clear:both"></div>
 
-  <div class="board-list">
-    <h2>Boards</h2>
-    <div id="boards"></div>
-  </div>
-  <div class="thread-list" style="display:none;">
-    <button class="back-button" onclick="goBackToBoards()">Back to Boards</button>
-    <h2>Threads in <span id="current-board"></span></h2>
-    <ul id="threads"></ul>
-    <div class="post-form">
-      <h3>Create New Thread</h3>
-      <textarea id="new-thread-content" placeholder="Thread content"></textarea>
-      <input type="file" id="thread-image" accept="image/*">
-      <button id="thread-post-button" onclick="createThread()">Post Thread</button>
+    <div class="settings-panel" id="settings-panel">
+      <h3>Relay Configuration</h3>
+      <label>Relays (one per line)</label>
+      <textarea id="relay-list"></textarea>
+      <button onclick="saveRelays()">Save</button>
+      <button onclick="resetRelays()">Reset Defaults</button>
     </div>
-  </div>
-  <div class="post-list" style="display:none;">
-    <button class="back-button" onclick="goBackToThreads()">Back to Threads</button>
-    <h2>Posts in Thread</h2>
-    <ul id="posts"></ul>
+
     <div class="post-form">
-      <h3>Reply to Thread</h3>
-      <textarea id="new-post-content" placeholder="Reply content"></textarea>
-      <input type="file" id="post-image" accept="image/*">
-      <button id="reply-post-button" onclick="createPost()">Post Reply</button>
+      <textarea id="msg-input" placeholder="Post something anonymous..." maxlength="1000"></textarea>
+      <div class="img-upload-row">
+        <label class="img-upload-label">
+          attach image
+          <input type="file" id="msg-image" accept="image/*" style="display:none" onchange="updateFileName()">
+        </label>
+        <span class="img-upload-name" id="file-name"></span>
+      </div>
+      <div class="form-footer">
+        <span class="char-count" id="char-count">0/1000</span>
+        <button class="post-btn" id="post-btn" onclick="postMessage()">Post Anonymously</button>
+      </div>
     </div>
+
+    <div class="status-bar" id="status">Connecting...</div>
+
+    <div id="loading" class="loading" style="display:none">Loading feed</div>
+    <div class="feed" id="feed"></div>
+
+    <div class="toast" id="toast"></div>
   </div>
 
   <script>
-    function showMessage(message, duration=3000) {
-      const msgBox = document.getElementById('message-box');
-      msgBox.innerText = message;
-      msgBox.style.display = 'block';
-      setTimeout(() => msgBox.style.display = 'none', duration);
-    }
+    // ── Shared anonymous identity ──
+    // Everyone posts from this single keypair. The private key is public on purpose.
+    const ANON_PRIVKEY = '07662af3b7e87f9b6c88764e8ec0578a909e675b3b6ad1961a2bfb150630fa93';
+    const ANON_PUBKEY = NostrTools.getPublicKey(ANON_PRIVKEY);
 
-    // Default, privacy-optimized relay set
+    // ── Relays ──
     const DEFAULT_RELAYS = [
       'wss://relay.damus.io',
       'wss://nos.lol',
-      'wss://eden.nostr.land',
       'wss://relay.snort.social',
       'wss://relay.primal.net',
       'wss://nostr.fmt.wiz.biz',
       'wss://offchain.pub',
-      'wss://nostr.wine',
-      'wss://relay.current.fyi',
-      'wss://purplepag.es',
-      'wss://nostr.mom',
-      'wss://relay.orangepill.dev',
-      'wss://relay.nostr.bg',
-      'wss://nostr.zebedee.cloud',
-      'wss://nostr.zaprite.com',
       'wss://nostr-pub.wellorder.net'
     ];
 
-    // Working relay list (starts from defaults, can be overridden by user)
-    let RELAYS = DEFAULT_RELAYS.slice();
-    let publishSubsetCount = Number(localStorage.getItem('publishSubsetCount')) || 3;
-
-    function normalizeRelayUrl(url) {
-      try { return new URL(url).toString().replace(/\/$/, ''); } catch { return ''; }
-    }
-
-    function loadRelaysFromStorage() {
-      try {
-        const raw = localStorage.getItem('relays');
-        if (!raw) return;
-        const list = raw.split(/[\n,\s]+/).map(normalizeRelayUrl).filter(Boolean);
-        const unique = Array.from(new Set(list));
-        if (unique.length) {
-          RELAYS = unique;
-        }
-      } catch {}
-    }
-
-    function getPublishCount() {
-      const n = Number(localStorage.getItem('publishSubsetCount'));
-      return Number.isFinite(n) && n > 0 ? Math.floor(n) : publishSubsetCount;
-    }
-
-    function pickRandomSubset(array, count) {
-      if (array.length <= count) return array.slice();
-      const copy = array.slice();
-      for (let i = copy.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        const t = copy[i]; copy[i] = copy[j]; copy[j] = t;
-      }
-      return copy.slice(0, count);
-    }
-
-    function getWriteRelays() {
-      return pickRandomSubset(RELAYS, getPublishCount());
-    }
-
+    let RELAYS = loadRelays();
     let pool = null;
     let currentSub = null;
-    let currentBoard = null;
-    let currentThread = null;
+    const seenIds = new Set();
 
-    const BOARDS = [
-      { category: 'General', boards: [
-        { name: '/b/ - Random', pubkey: '64d60e7e1081559c5d0e2e9871790ae3d11b3d67f1b74f3e6c8880e60d3d5f5a' }
-      ]}
-    ];
+    function loadRelays() {
+      try {
+        const saved = localStorage.getItem('nostrchan_relays');
+        if (saved) {
+          const list = JSON.parse(saved);
+          if (Array.isArray(list) && list.length) return list;
+        }
+      } catch {}
+      return DEFAULT_RELAYS.slice();
+    }
 
+    // ── UI helpers ──
+    function toast(msg, type = 'success') {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast ' + type;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 3000);
+    }
+
+    function setStatus(msg, cls = '') {
+      const el = document.getElementById('status');
+      el.innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg;
+    }
+
+    function updateFileName() {
+      const file = document.getElementById('msg-image').files[0];
+      document.getElementById('file-name').textContent = file ? file.name : '';
+    }
+
+    // Character counter
+    document.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('msg-input');
+      const counter = document.getElementById('char-count');
+      input.addEventListener('input', () => {
+        counter.textContent = `${input.value.length}/1000`;
+      });
+    });
+
+    // ── Image upload via nostr.build ──
     async function uploadImage(file) {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('https://nostr.build/api/v2/upload/files', { method: 'POST', body: formData });
-      if (!res.ok) throw new Error('Upload failed');
-      const result = await res.json();
-      return result?.data?.[0]?.url;
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('https://nostr.build/api/v2/upload/files', { method: 'POST', body: form });
+      if (!res.ok) throw new Error('Image upload failed');
+      const data = await res.json();
+      const url = data?.data?.[0]?.url;
+      if (!url) throw new Error('No URL returned from image host');
+      return url;
     }
 
-    async function generateTempKeypair() {
-      const privkey = NostrTools.generatePrivateKey();
-      const pubkey = NostrTools.getPublicKey(privkey);
-      return { privkey, pubkey };
-    }
-
-    async function ensureRelayConnections() {
+    // ── Connect to relays ──
+    async function connect() {
       pool = new NostrTools.SimplePool();
-      await Promise.allSettled(RELAYS.map(r => pool.ensureRelay(r)));
+      const results = await Promise.allSettled(RELAYS.map(r => pool.ensureRelay(r)));
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      if (ok === 0) {
+        setStatus('Failed to connect to any relay', 'error');
+        return false;
+      }
+      setStatus(`Connected to ${ok}/${RELAYS.length} relays`, 'connected');
+      return true;
     }
 
-    function formatTimestamp(ts) { return new Date(ts*1000).toLocaleString(); }
+    // ── Subscribe to the feed ──
+    function subscribeFeed() {
+      if (currentSub) { currentSub.unsub(); currentSub = null; }
 
-    function loadBoards() {
-      const boardsDiv = document.getElementById('boards');
-      boardsDiv.innerHTML = '';
-      BOARDS.forEach(cat => {
-        const div = document.createElement('div');
-        div.className = 'board-category';
-        div.innerHTML = `<h3>${cat.category}</h3>`;
-        const ul = document.createElement('ul');
-        cat.boards.forEach(board => {
-          const li = document.createElement('li');
-          li.className = 'board';
-          li.innerText = board.name;
-          li.onclick = () => loadThreads(board);
-          ul.appendChild(li);
-        });
-        div.appendChild(ul);
-        boardsDiv.appendChild(div);
-      });
-    }
-
-    function unsubscribe() { if (currentSub) { currentSub.unsub(); currentSub = null; } }
-
-    function goBackToBoards() {
-      unsubscribe();
-      document.querySelector('.board-list').style.display = 'block';
-      document.querySelector('.thread-list').style.display = 'none';
-      document.querySelector('.post-list').style.display = 'none';
-      currentBoard = null; currentThread = null;
-      document.getElementById('loading').style.display = 'none';
-    }
-
-    function goBackToThreads() {
-      unsubscribe();
-      document.querySelector('.thread-list').style.display = 'block';
-      document.querySelector('.post-list').style.display = 'none';
-      currentThread = null;
-      loadThreads(currentBoard);
-    }
-
-    async function loadThreads(board) {
-      currentBoard = board;
-      document.getElementById('current-board').innerText = board.name;
-      document.querySelector('.board-list').style.display = 'none';
-      document.querySelector('.thread-list').style.display = 'block';
-      document.querySelector('.post-list').style.display = 'none';
       document.getElementById('loading').style.display = 'block';
+      const feed = document.getElementById('feed');
+      feed.innerHTML = '';
+      seenIds.clear();
 
-      const threadsContainer = document.getElementById('threads');
-      threadsContainer.innerHTML = '';
-      unsubscribe();
-      let events = [];
-      currentSub = pool.sub(RELAYS, [{ kinds:[1], '#board':[board.pubkey], '#t':['thread'], limit:20 }]);
-      currentSub.on('event', ev => { if (!document.getElementById(ev.id)) events.push(ev); });
+      let initialEvents = [];
+
+      currentSub = pool.sub(RELAYS, [{
+        kinds: [1],
+        authors: [ANON_PUBKEY],
+        limit: 50
+      }]);
+
+      currentSub.on('event', ev => {
+        if (seenIds.has(ev.id)) return;
+        seenIds.add(ev.id);
+        initialEvents.push(ev);
+      });
+
       currentSub.on('eose', () => {
-        events.sort((a,b)=>b.created_at-a.created_at).forEach(ev=>renderThread(ev,'append'));
-        currentSub.on('event', ev => { if (!document.getElementById(ev.id)) renderThread(ev,'prepend'); });
         document.getElementById('loading').style.display = 'none';
+        // Sort newest first and render
+        initialEvents.sort((a, b) => b.created_at - a.created_at);
+        initialEvents.forEach(ev => renderMessage(ev, 'append'));
+
+        if (initialEvents.length === 0) {
+          feed.innerHTML = '<div style="text-align:center;color:#666;padding:20px;">No messages yet. Be the first to post!</div>';
+        }
+
+        // Live updates after initial load
+        currentSub.on('event', ev => {
+          if (seenIds.has(ev.id)) return;
+          seenIds.add(ev.id);
+          // Clear the "no messages" placeholder if present
+          const placeholder = feed.querySelector('div[style]');
+          if (placeholder && placeholder.textContent.includes('No messages')) {
+            placeholder.remove();
+          }
+          renderMessage(ev, 'prepend');
+        });
       });
     }
 
-    function renderThread(ev, mode='append') {
-      const li = document.createElement('li');
-      li.className = 'thread';
-      li.id = ev.id;
-      li.innerHTML = `<p><small>${formatTimestamp(ev.created_at)}</small></p><p>${DOMPurify.sanitize(ev.content)}</p>`;
-      li.onclick = () => loadPosts(ev);
-      const cont = document.getElementById('threads');
-      mode==='prepend'? cont.prepend(li): cont.appendChild(li);
+    // ── Render a message ──
+    function renderMessage(ev, mode = 'append') {
+      const feed = document.getElementById('feed');
+      const div = document.createElement('div');
+      div.className = 'msg';
+      div.id = 'msg-' + ev.id;
+
+      // Check for image tag
+      const imgTag = ev.tags.find(t => t[0] === 'image');
+      const imgHtml = imgTag ? `<img class="msg-img" src="${DOMPurify.sanitize(imgTag[1])}" onclick="window.open(this.src,'_blank')" alt="attached image">` : '';
+
+      const time = new Date(ev.created_at * 1000);
+      const timeStr = time.toLocaleString();
+      const idShort = ev.id.substring(0, 8);
+
+      div.innerHTML = `
+        <div class="msg-text">${DOMPurify.sanitize(ev.content)}</div>
+        ${imgHtml}
+        <div class="msg-meta">
+          <span class="msg-anon">Anonymous</span>
+          <span title="${ev.id}">#${idShort} &middot; ${timeStr}</span>
+        </div>
+      `;
+
+      if (mode === 'prepend') {
+        feed.prepend(div);
+      } else {
+        feed.appendChild(div);
+      }
     }
 
-    async function loadPosts(thread) {
-      currentThread = thread;
-      document.querySelector('.thread-list').style.display = 'none';
-      document.querySelector('.post-list').style.display = 'block';
-      document.getElementById('loading').style.display = 'block';
-      const cont = document.getElementById('posts');
-      cont.innerHTML='';
-      const orig = document.createElement('li');
-      orig.className='post';
-      orig.innerHTML = `<h3>Original Post</h3><p><small>${formatTimestamp(thread.created_at)}</small></p><p>${DOMPurify.sanitize(thread.content)}</p>`;
-      cont.appendChild(orig);
-      unsubscribe();
-      let events=[];
-      currentSub = pool.sub(RELAYS,[{ kinds:[1], '#e':[thread.id]}]);
-      currentSub.on('event', ev=>{ if(ev.id!==thread.id&&!document.getElementById(ev.id)) events.push(ev); });
-      currentSub.on('eose', ()=>{
-        events.sort((a,b)=>a.created_at-b.created_at).forEach(ev=>renderPost(ev));
-        currentSub.on('event', ev=>{ if(ev.id!==thread.id&&!document.getElementById(ev.id)) renderPost(ev); });
-        document.getElementById('loading').style.display = 'none';
-      });
+    // ── Post a message ──
+    async function postMessage() {
+      const input = document.getElementById('msg-input');
+      const imageInput = document.getElementById('msg-image');
+      const btn = document.getElementById('post-btn');
+      const content = input.value.trim();
+      const imageFile = imageInput.files[0];
+
+      if (!content && !imageFile) {
+        toast('Write something or attach an image', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Posting...';
+
+      try {
+        const tags = [['t', 'nostrchan']];
+
+        // Upload image if attached
+        if (imageFile) {
+          btn.textContent = 'Uploading image...';
+          const url = await uploadImage(imageFile);
+          tags.push(['image', url]);
+        }
+
+        // Build and sign event with shared key
+        const event = {
+          kind: 1,
+          pubkey: ANON_PUBKEY,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: tags,
+          content: content
+        };
+
+        const signed = NostrTools.finalizeEvent(event, ANON_PRIVKEY);
+
+        // Publish to all relays
+        const pubs = pool.publish(RELAYS, signed);
+        const results = await Promise.allSettled(pubs);
+        const ok = results.filter(r => r.status === 'fulfilled').length;
+
+        if (ok > 0) {
+          toast(`Posted to ${ok} relay${ok > 1 ? 's' : ''}`);
+          input.value = '';
+          imageInput.value = '';
+          document.getElementById('file-name').textContent = '';
+          document.getElementById('char-count').textContent = '0/1000';
+        } else {
+          throw new Error('No relays accepted the message');
+        }
+      } catch (e) {
+        console.error('Post failed:', e);
+        toast('Failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Post Anonymously';
+      }
     }
 
-    function renderPost(ev) {
-      const li = document.createElement('li');
-      li.className='post';
-      li.id=ev.id;
-      li.innerHTML=`<p><small>${formatTimestamp(ev.created_at)}</small></p><p>${DOMPurify.sanitize(ev.content)}</p>`;
-      document.getElementById('posts').appendChild(li);
-    }
-
-    async function createThread() {
-      const content=document.getElementById('new-thread-content').value;
-      const imageFile=document.getElementById('thread-image').files[0];
-      const btn=document.getElementById('thread-post-button');
-      if(!content&&!imageFile){showMessage('Thread content or image required');return;}
-      btn.disabled=true;
-      try{
-        const tags=[['board',currentBoard.pubkey],['t','thread']];
-        if(imageFile){ btn.innerText='Uploading...'; const url=await uploadImage(imageFile); if(url) tags.push(['image',url]); }
-        btn.innerText='Posting...';
-        const {privkey}=await generateTempKeypair();
-        const ev={kind:1,pubkey:NostrTools.getPublicKey(privkey),created_at:Math.floor(Date.now()/1000),tags,content};
-        const signed=NostrTools.finalizeEvent(ev,privkey);
-        const pubs=pool.publish(getWriteRelays(),signed);
-        const results=await Promise.allSettled(pubs);
-        if(results.some(r=>r.status==='fulfilled')) showMessage('Thread posted!'); else throw new Error('No relays accepted');
-        document.getElementById('new-thread-content').value='';
-        document.getElementById('thread-image').value='';
-      }catch(e){console.error(e);showMessage('Failed: '+e.message);}finally{btn.disabled=false;btn.innerText='Post Thread';}
-    }
-
-    async function createPost() {
-      const content=document.getElementById('new-post-content').value;
-      const imageFile=document.getElementById('post-image').files[0];
-      const btn=document.getElementById('reply-post-button');
-      if(!content&&!imageFile){showMessage('Reply content or image required');return;}
-      btn.disabled=true;
-      try{
-        // Remove relay URL from 'e' tag for privacy; keep marker as 'reply'
-        const tags=[['e',currentThread.id,'','reply']];
-        if(imageFile){ btn.innerText='Uploading...'; const url=await uploadImage(imageFile); if(url) tags.push(['image',url]); }
-        btn.innerText='Posting...';
-        const {privkey}=await generateTempKeypair();
-        const ev={kind:1,pubkey:NostrTools.getPublicKey(privkey),created_at:Math.floor(Date.now()/1000),tags,content};
-        const signed=NostrTools.finalizeEvent(ev,privkey);
-        const pubs=pool.publish(getWriteRelays(),signed);
-        const results=await Promise.allSettled(pubs);
-        if(results.some(r=>r.status==='fulfilled')) showMessage('Reply posted!'); else throw new Error('No relays accepted');
-        document.getElementById('new-post-content').value='';
-        document.getElementById('post-image').value='';
-      }catch(e){console.error(e);showMessage('Failed: '+e.message);}finally{btn.disabled=false;btn.innerText='Post Reply';}
-    }
-
+    // ── Settings ──
     function toggleSettings() {
       const panel = document.getElementById('settings-panel');
-      const isOpen = panel.style.display !== 'none';
-      panel.style.display = isOpen ? 'none' : 'block';
-      if (!isOpen) populateSettingsForm();
-    }
-
-    function populateSettingsForm() {
-      const textarea = document.getElementById('relay-list');
-      textarea.value = RELAYS.join('\n');
-      document.getElementById('publish-count').value = getPublishCount();
-      document.getElementById('relay-status').innerHTML = '';
-    }
-
-    async function saveSettings() {
-      const textarea = document.getElementById('relay-list');
-      const countEl = document.getElementById('publish-count');
-      const raw = textarea.value || '';
-      const list = raw.split(/[\n,\s]+/).map(normalizeRelayUrl).filter(Boolean);
-      const unique = Array.from(new Set(list));
-      localStorage.setItem('relays', unique.join('\n'));
-      const n = Math.max(1, Math.min(10, Number(countEl.value) || 3));
-      localStorage.setItem('publishSubsetCount', String(n));
-      publishSubsetCount = n;
-      if (unique.length) {
-        RELAYS = unique;
-      }
-      try {
-        await ensureRelayConnections();
-        showMessage('Settings saved');
-      } catch (e) {
-        console.error(e);
-        showMessage('Saved, but failed to connect to some relays');
+      const open = panel.style.display !== 'none' && panel.style.display !== '';
+      panel.style.display = open ? 'none' : 'block';
+      if (!open) {
+        document.getElementById('relay-list').value = RELAYS.join('\n');
       }
     }
 
-    async function testRelays() {
-      const statusDiv = document.getElementById('relay-status');
-      statusDiv.innerHTML = 'Testing...';
-      const results = [];
-      const timeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
-      await Promise.allSettled(RELAYS.map(async (url) => {
-        let relay;
-        try {
-          relay = NostrTools.relayInit(url);
-          await Promise.race([relay.connect(), timeout(4000)]);
-          results.push({ url, ok: true });
-        } catch (e) {
-          results.push({ url, ok: false });
-        } finally {
-          try { relay?.close(); } catch {}
-        }
-      }));
-      statusDiv.innerHTML = results.map(r => `${r.ok ? '✅' : '❌'} ${r.url}`).join('<br>');
+    function saveRelays() {
+      const raw = document.getElementById('relay-list').value;
+      const list = raw.split(/[\n,\s]+/).map(s => s.trim()).filter(s => s.startsWith('wss://'));
+      if (list.length === 0) {
+        toast('Need at least one relay', 'error');
+        return;
+      }
+      RELAYS = [...new Set(list)];
+      localStorage.setItem('nostrchan_relays', JSON.stringify(RELAYS));
+      toast('Relays saved - reconnecting...');
+      toggleSettings();
+      init();
     }
 
-    window.onload=async()=>{
-      try{
-        loadRelaysFromStorage();
-        await ensureRelayConnections();
-        loadBoards();
-      }catch(e){
-        console.error(e);
-        showMessage('Failed to connect to relays');
-      }
-    };
+    function resetRelays() {
+      RELAYS = DEFAULT_RELAYS.slice();
+      localStorage.removeItem('nostrchan_relays');
+      document.getElementById('relay-list').value = RELAYS.join('\n');
+      toast('Reset to defaults - reconnecting...');
+      toggleSettings();
+      init();
+    }
+
+    // ── Init ──
+    async function init() {
+      if (currentSub) { currentSub.unsub(); currentSub = null; }
+      setStatus('Connecting...');
+      const ok = await connect();
+      if (ok) subscribeFeed();
+    }
+
+    window.onload = init;
   </script>
 </body>
 </html>
